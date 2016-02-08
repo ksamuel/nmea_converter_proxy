@@ -2,7 +2,8 @@
 from datetime import datetime
 
 from nmea_converter_proxy.parser import (parse_optiplex_message,
-                                         parse_aanderaa_message)
+                                         parse_aanderaa_message,
+                                         format_as_nmea)
 
 
 def test_import():
@@ -110,4 +111,15 @@ def test_parse_aanderaa_message():
 
     for msg, data in zip(aanderaa_messages, expected_data):
         assert parse_aanderaa_message(msg) == data
+
+
+def test_nmea_formatter():
+
+    sentence = format_as_nmea(['GPGLL', '5057.970', 'N', '00146.110',
+                              'E', '142451', 'A'])
+    assert sentence == b'$GPGLL,5057.970,N,00146.110,E,142451,A*27\r\n'
+
+    sentence = format_as_nmea(['GPVTG', '089.0', 'T', '',
+                              '', '15.2', 'N', '', ''])
+    assert sentence == b'$GPVTG,089.0,T,,,15.2,N,,*7F\r\n'
 

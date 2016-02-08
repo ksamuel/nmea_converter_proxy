@@ -26,8 +26,11 @@ class AanderaaProtocol(asyncio.Protocol):
             parsed_data = parse_aanderaa_message(data)
             message = str(parsed_data)
             log.info(message)
-        except ValueError:
-            log.error("Unable to parse '{!r}' from {}".format(data, self.peername))
+        except ValueError as e:
+            msg = "Unable to parse '{!r}' from {}. Error was: {}"
+            log.error(msg.format(data, self.peername, e))
+        except Exception as e:
+            logging.exception(e)
         else:
             self.client.send(message)
 
@@ -50,8 +53,11 @@ class OptiplexProtocol(asyncio.Protocol):
             parsed_data = parse_optiplex_message(data)
             message = str(parsed_data)
             log.info(message)
-        except ValueError:
-            log.error("Unable to parse '{!r}' from {}".format(data, self.peername))
+        except ValueError as e:
+            msg = "Unable to parse '{!r}' from {}. Error was: {}"
+            log.error(msg.format(data, self.peername, e))
+        except Exception as e:
+            logging.exception(e)
         else:
             self.client.send(message)
 
@@ -205,3 +211,41 @@ def run_dummy_concentrator(port):
     server.close()
     loop.run_until_complete(server.wait_closed())
     loop.close()
+
+
+# def get_magnetic_deviation(lat, long):
+#     pass
+
+
+# def format_water_flow_sentence(degres, speed):
+
+#     sentence = format_as_nmea(['GPGLL', '5057.970', 'N', '00146.110',
+#                               'E', '142451', 'A'])
+
+
+#     aanderaa_code = 'VW'  # code for Weather Instruments
+#     data_code = 'VDR' # code for Set and Drift
+
+#     data = [
+#         aanderaa_code + data_code, # identifier
+#         "{:.2f}".format(degre), # meridian dergrees
+#         'T',
+#         '',
+#         'M',
+#         "{:.2f}".format(speed),
+#         'N'
+#     ]
+
+#     Current speed, knots
+#     Direction, degrees Magnetic
+#     Direction, degrees True
+
+#     The direction towards which a current flows (Set) and speed (Drift) of a current.
+#     $--VDR,x.x,T,x.x,M,x.x,N*hh<CR><LF>
+#     Current speed, knots
+#     Direction, degrees Magnetic
+#     Direction, degrees True
+
+# def format_water_flow_sentence
+
+# optiplex: WI

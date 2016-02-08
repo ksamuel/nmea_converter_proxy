@@ -6,7 +6,11 @@ TCP proxy forwarding ASCII messages to an NMEA concentrator
 First setup
 ------------
 
-Install Python3.5. Make sure you have "Add to System path" checked in the installer.
+Install Python3.5 from https://www.python.org/downloads/release/python-351/.
+
+(make sure you get the 64 bits installer on a 64bits install).
+
+Ensure you have "Add to System path" checked in the installer.
 
 Unzip nmea_converter_proxy.zip. Hold Ctrl and right click on the directory icon to open a new terminal windows inside the directory.
 
@@ -49,15 +53,13 @@ Example:
     port = 8500
 
 
--------------------
-
-
 Help and debug
 ---------------
 
 Find out more about log by doing:
 
     python -m nmea_converter_proxy log
+
 
 You can get help on the command line tool by typing:
 
@@ -73,6 +75,9 @@ If you have several versions of Python installed at the same time, you can run a
 
    c:\direct\path\to\python.exe nmea_converter_proxy [command]
 
+Activate more verbosity by activating the debug mode:
+
+    python -m nmea_converter_proxy --debug [command]
 
 Developement
 -------------

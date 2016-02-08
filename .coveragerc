@@ -1,0 +1,7 @@
+[run]
+branch = true
+source = src/nmea_converter_proxy
+         tests/
+
+[report]
+fail_under = 80
