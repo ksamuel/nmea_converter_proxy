@@ -26,6 +26,11 @@ parser.add_argument('--debug', action="store_true")
 subparsers = parser.add_subparsers()
 
 
+def exit_on_error(msg):
+    log.error(msg)
+    sys.exit(1)
+
+
 # RUN subcommand
 def run_cmd(args):
     config_file = pathlib.Path(args.config_file)
@@ -38,23 +43,44 @@ def run_cmd(args):
     try:
         cfg = configparser.ConfigParser()
         cfg.read(str(config_file))
-        log.debug('Getting optiplex port')
-        optiplex_port = check_port(cfg.get('optiplex', 'port'))
-        log.debug('Getting aanderaa port')
-        aanderaa_port = check_port(cfg.get('aanderaa', 'port'))
-        log.debug('Getting concentrator port')
-        concentrator_port = check_port(cfg.get('concentrator', 'port'))
-        log.debug('Getting concentrator IP')
-        concentrator_ip = check_ipv4(cfg.get('concentrator', 'ip'))
 
-    except EnvironmentError:
-        log.error('Unable to load config file "%s"' % config_file)
-        sys.exit(1)
+        try:
+            log.debug('Getting concentrator IP')
+            concentrator_ip = check_ipv4(cfg.get('concentrator', 'ip'))
+            log.debug('Getting concentrator port')
+            concentrator_port = check_port(cfg.get('concentrator', 'port'))
+        except (configparser.NoSectionError, configparser.NoOptionError) as e:
+            exit_on_error('The configuration file is incomplete: %s' % e)
+
+        try:
+            log.debug('Getting optiplex port')
+            optiplex_port = check_port(cfg.get('optiplex', 'port'))
+        except configparser.NoOptionError as e:
+            exit_on_error('The configuration file is incomplete: %s' % e)
+        except configparser.NoSectionError:
+            optiplex_port = None
+
+        try:
+            log.debug('Getting aanderaa port')
+            aanderaa_port = check_port(cfg.get('aanderaa', 'port'))
+            log.debug('Getting magnetic declination')
+            magnetic_declination = float(cfg.get('aanderaa', 'magnetic_declination'))
+            msg = "Declination must be a number between -50 and 50"
+            assert -50 <= magnetic_declination <= 50, msg
+        except configparser.NoOptionError as e:
+            exit_on_error('The configuration file is incomplete: %s' % e)
+        except configparser.NoSectionError:
+            aanderaa_port = None
+            magnetic_declination = None
+
+    except (ValueError, AssertionError, EnvironmentError, configparser.ParsingError) as e:
+        exit_on_error('Error while loading config file "%s": %s' % (config_file, e))
 
     run_server(optiplex_port=optiplex_port,
                aanderaa_port=aanderaa_port,
                concentrator_port=concentrator_port,
-               concentrator_ip=concentrator_ip)
+               concentrator_ip=concentrator_ip,
+               magnetic_declination=magnetic_declination)
 
 run = subparsers.add_parser('run')
 run.add_argument('config_file', metavar="CONFIG_FILE", help='.ini configuration file')
@@ -110,8 +136,22 @@ def init_cmd(args):
             print(e)
 
     concentrator_port = request_port('Port of the NMEA concentrator [%s]: ')
-    aanderaa_port = request_port('Port for incomming Aanderaa messages [%s]: ')
+
     optiplex_port = request_port('Port for incomming Optiplex messages [%s]: ')
+
+    aanderaa_port = request_port('Port for incomming Aanderaa messages [%s]: ')
+
+    while True:
+        msg = 'Magnetic declination for the aanderaa sensor [default is 0.5]'
+        magnetic_declination = input(msg)
+        if not magnetic_declination:
+            magnetic_declination = -0.5
+        try:
+            magnetic_declination = float(magnetic_declination)
+            assert -50 <= magnetic_declination <= 50
+            break
+        except (ValueError, AssertionError) as e:
+            print("Magnetic declination must be a number between -50 and 50")
 
     home = pathlib.Path(expanduser("~"))
     default_config_file = home / 'nmea_converter_proxy.ini'
@@ -132,6 +172,7 @@ def init_cmd(args):
                 cfg.set('optiplex', 'port', str(optiplex_port))
                 cfg.add_section('aanderaa')
                 cfg.set('aanderaa', 'port', str(aanderaa_port))
+                cfg.set('aanderaa', 'magnetic_declination', str(magnetic_declination))
                 cfg.add_section('concentrator')
                 cfg.set('concentrator', 'ip', concentrator_ip)
                 cfg.set('concentrator', 'port', str(concentrator_port))
@@ -170,7 +211,7 @@ def log_file_cmd(args):
             lines = f.readlines()[-10:]
             if lines:
                 print('Last lines of log:\n')
-                for line in f.readlines()[-10:]:
+                for line in lines:
                     print(line, end='')
             else:
                 print('Log is empty')
@@ -191,4 +232,3 @@ else:
         args.func(args)
     except KeyboardInterrupt:
         sys.exit('Program interrupted manually')
-#

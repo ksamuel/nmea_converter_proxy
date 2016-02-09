@@ -3,7 +3,11 @@ from datetime import datetime
 
 from nmea_converter_proxy.parser import (parse_optiplex_message,
                                          parse_aanderaa_message,
-                                         format_as_nmea)
+                                         format_as_nmea,
+                                         format_water_flow_sentence,
+                                         format_temperature_sentence,
+                                         format_water_depth_sentence,
+                                         format_pressure_sentence)
 
 
 def test_import():
@@ -123,3 +127,30 @@ def test_nmea_formatter():
                               '', '15.2', 'N', '', ''])
     assert sentence == b'$GPVTG,089.0,T,,,15.2,N,,*7F\r\n'
 
+    sentence = format_as_nmea(['GPVTG', '089.0', 'T', '',
+                              '', '15.2', 'N', '', ''], prefix="!")
+    assert sentence == b'!GPVTG,089.0,T,,,15.2,N,,*7F\r\n'
+
+
+def test_format_water_flow_sentence():
+
+    msg = format_water_flow_sentence(318.0496, 318.5496, 34.022800000000004)
+    assert msg == b"$VWVDR,318.0,T,318.5,M,34.0,N*A\r\n"
+
+
+def test_format_temperature_sentence():
+
+    msg = format_temperature_sentence(17.09663)
+    assert msg == b"$VWMTW,17.1,C*15\r\n"
+
+
+def test_format_water_depth_sentence():
+
+    msg = format_water_depth_sentence(5.438)
+    assert msg == b"$VWDPT,5.4,,*42\r\n"
+
+
+def test_format_pressure_sentence():
+
+    msg = format_pressure_sentence(102400)
+    assert msg == b"!PPRE,102400.0*22\r\n"

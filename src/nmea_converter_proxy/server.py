@@ -3,7 +3,11 @@ import logging
 import sys
 
 from nmea_converter_proxy.parser import (parse_optiplex_message,
-                                         parse_aanderaa_message)
+                                         parse_aanderaa_message,
+                                         format_water_flow_sentence,
+                                         format_temperature_sentence,
+                                         format_water_depth_sentence,
+                                         format_pressure_sentence)
 
 log = logging.getLogger(__name__)
 
@@ -11,8 +15,9 @@ log = logging.getLogger(__name__)
 class AanderaaProtocol(asyncio.Protocol):
     """ Receive, parse, convert and forward the aanderaa messages"""
 
-    def __init__(self, concentrator_client):
+    def __init__(self, concentrator_client, magnetic_declination):
         self.client = concentrator_client
+        self.magnetic_declination = magnetic_declination
 
     def connection_made(self, transport):
         peername = 'Aanderaa %s:%s' % transport.get_extra_info('peername')
@@ -24,15 +29,41 @@ class AanderaaProtocol(asyncio.Protocol):
         log.debug('Data received from {}'.format(self.peername))
         try:
             parsed_data = parse_aanderaa_message(data)
-            message = str(parsed_data)
-            log.info(message)
+            log.info("Extracted %s" % parsed_data)
         except ValueError as e:
             msg = "Unable to parse '{!r}' from {}. Error was: {}"
             log.error(msg.format(data, self.peername, e))
+            return
         except Exception as e:
             logging.exception(e)
-        else:
-            self.client.send(message)
+            return
+
+        try:
+            args = {
+                'magnetic_degrees': parsed_data['direction'],
+                'true_degrees': parsed_data['direction'] - self.magnetic_declination,
+                'speed_in_knots': parsed_data['speed'] * 0.01944
+            }
+
+            water_flow_sentence = format_water_flow_sentence(**args)
+            self.client.send(water_flow_sentence)
+        except ValueError as e:
+            msg = ("Unable to convert '{!r}' from {} to NMEA water flow "
+                   "sentence. Error was: {}")
+            log.error(msg.format(data, self.peername, e))
+        except Exception as e:
+            logging.exception(e)
+
+        try:
+            temperature = parsed_data['temperature']
+            temperature_sentence = format_temperature_sentence(temperature)
+            self.client.send(temperature_sentence)
+        except ValueError as e:
+            msg = ("Unable to convert '{!r}' from {} to NMEA temperature "
+                   "sentence. Error was: {}")
+            log.error(msg.format(data, self.peername, e))
+        except Exception as e:
+            logging.exception(e)
 
 
 class OptiplexProtocol(asyncio.Protocol):
@@ -51,15 +82,39 @@ class OptiplexProtocol(asyncio.Protocol):
         log.debug('Data received from {}'.format(self.peername))
         try:
             parsed_data = parse_optiplex_message(data)
-            message = str(parsed_data)
-            log.info(message)
+            log.info("Extracted %s" % parsed_data)
         except ValueError as e:
             msg = "Unable to parse '{!r}' from {}. Error was: {}"
             log.error(msg.format(data, self.peername, e))
         except Exception as e:
             logging.exception(e)
-        else:
-            self.client.send(message)
+
+        value = parsed_data['value']
+        unit = parsed_data['unit']
+
+        if parsed_data['unit'] == "cm":
+
+            try:
+                water_depth_sentence = format_water_depth_sentence(value)
+                self.client.send(water_depth_sentence)
+            except ValueError as e:
+                msg = ("Unable to convert '{!r}' from {} to NMEA water depth "
+                       "sentence. Error was: {}")
+                log.error(msg.format(data, self.peername, e))
+            except Exception as e:
+                logging.exception(e)
+
+        if parsed_data['unit'] == "hPa":
+            try:
+                value *= 100
+                pressure_sentence = format_pressure_sentence(value)
+                self.client.send(pressure_sentence)
+            except ValueError as e:
+                msg = ("Unable to convert '{!r}' from {} to NMEA temperature "
+                       "sentence. Error was: {}")
+                log.error(msg.format(data, self.peername, e))
+            except Exception as e:
+                logging.exception(e)
 
 
 class ConcentratorClientProtocol(asyncio.Protocol):
@@ -130,14 +185,13 @@ class ConcentratorClient:
         return (await coro)
 
 
-
-    def send(self, message, encoding="ascii"):
+    def send(self, message):
         """ Send the message to the server or log an error """
         log.debug("Sending '%s' to concentrator" % message)
         if not self.transport:
             log.error('Could not send data to NMEA concentrator: not connected')
         else:
-            self.transport.write(message.encode(encoding))
+            self.transport.write(message)
 
 
 class FakeConcentratorProtocol(asyncio.Protocol):
@@ -154,7 +208,8 @@ class FakeConcentratorProtocol(asyncio.Protocol):
         log.info(msg.format(self.peername, data))
 
 
-def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip):
+def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip,
+               magnetic_declination):
     """ Start the event loop with the NMEA converter proxy running """
 
     loop = asyncio.get_event_loop()
@@ -162,19 +217,25 @@ def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip)
     concentrator_client = ConcentratorClient(loop, concentrator_ip,
                                             concentrator_port)
 
-    def create_optiplex_protocol():  # just a factory to pass in the client
-        return OptiplexProtocol(concentrator_client)
-    coro = loop.create_server(create_optiplex_protocol, '0.0.0.0', optiplex_port)
-    optiplex_server = loop.run_until_complete(coro)
-    con = optiplex_server.sockets[0].getsockname()
-    log.info('Waiting for optiplex messages on %s:%s' % con)
+    if optiplex_port:
+        def create_optiplex_protocol():  # just a factory to pass in the client
+            return OptiplexProtocol(concentrator_client)
+        coro = loop.create_server(create_optiplex_protocol, '0.0.0.0', optiplex_port)
+        optiplex_server = loop.run_until_complete(coro)
+        con = optiplex_server.sockets[0].getsockname()
+        log.info('Waiting for optiplex messages on %s:%s' % con)
+    else:
+        log.warning('Optiplex not configured')
 
-    def create_aanderaa_protocol():  # just a factory to pass in the client
-        return AanderaaProtocol(concentrator_client)
-    coro = loop.create_server(create_aanderaa_protocol, '0.0.0.0', aanderaa_port)
-    aanderaa_server = loop.run_until_complete(coro)
-    con = aanderaa_server.sockets[0].getsockname()
-    log.info('Waiting for aanderaa messages on %s:%s' % con)
+    if aanderaa_port:
+        def create_aanderaa_protocol():  # just a factory to pass in the client
+            return AanderaaProtocol(concentrator_client, magnetic_declination)
+        coro = loop.create_server(create_aanderaa_protocol, '0.0.0.0', aanderaa_port)
+        aanderaa_server = loop.run_until_complete(coro)
+        con = aanderaa_server.sockets[0].getsockname()
+        log.info('Waiting for aanderaa messages on %s:%s' % con)
+    else:
+        log.warning('Aanderaa not configured')
 
     try:
         loop.run_forever()
@@ -212,40 +273,3 @@ def run_dummy_concentrator(port):
     loop.run_until_complete(server.wait_closed())
     loop.close()
 
-
-# def get_magnetic_deviation(lat, long):
-#     pass
-
-
-# def format_water_flow_sentence(degres, speed):
-
-#     sentence = format_as_nmea(['GPGLL', '5057.970', 'N', '00146.110',
-#                               'E', '142451', 'A'])
-
-
-#     aanderaa_code = 'VW'  # code for Weather Instruments
-#     data_code = 'VDR' # code for Set and Drift
-
-#     data = [
-#         aanderaa_code + data_code, # identifier
-#         "{:.2f}".format(degre), # meridian dergrees
-#         'T',
-#         '',
-#         'M',
-#         "{:.2f}".format(speed),
-#         'N'
-#     ]
-
-#     Current speed, knots
-#     Direction, degrees Magnetic
-#     Direction, degrees True
-
-#     The direction towards which a current flows (Set) and speed (Drift) of a current.
-#     $--VDR,x.x,T,x.x,M,x.x,N*hh<CR><LF>
-#     Current speed, knots
-#     Direction, degrees Magnetic
-#     Direction, degrees True
-
-# def format_water_flow_sentence
-
-# optiplex: WI
