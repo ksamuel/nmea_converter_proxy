@@ -41,6 +41,7 @@ Config file format::
     
     [aanderaa]
     port = port where the aanderaa sensor sends messages to
+    magnetic_declination = magnetic declination at the sensor location
     
     [concentrator]
     ip = IPV4 address where the NMEA concentrator is located
@@ -54,6 +55,7 @@ Example::
     
     [aanderaa]
     port = 8501
+    magnetic_declination = -0.5
     
     [concentrator]
     ip = 89.32.00.1
