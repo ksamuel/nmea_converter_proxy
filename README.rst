@@ -14,6 +14,8 @@ Install Python3.5 from https://www.python.org/ftp/python/3.5.1/python-3.5.1-amd6
 
 Ensure you have "Add to System path" checked in the installer.
 
+Download the zipped Python code at https://github.com/ksamuel/nmea_converter_proxy/archive/master.zip.
+
 Unzip nmea_converter_proxy.zip. Hold Ctrl and right click on the directory icon to open a new terminal windows inside the directory.
 
 Type::
