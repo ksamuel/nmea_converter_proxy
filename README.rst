@@ -86,18 +86,18 @@ E.G::
 
 Water depth variation sentence::
 
-    $VWDPT,<meter>,<empty field>,*42\r\n
+    $VWDPT,<meter>,<empty field>,*<checksum>\r\n
 
 E.G::
 
     $VWDPT,5.4,,*42\r\n
-    $VWDPT,-1.0,,*42\r\n
+    $VWDPT,-1.0,,*6F\r\n
     
 
 
 Pressure sentence::
 
-    b"!PPRE,<pascals>,P*22\r\n"
+    b"!PPRE,<pascals>,P*<checksum>\r\n"
 
 E.G::
 

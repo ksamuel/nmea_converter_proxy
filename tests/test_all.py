@@ -148,9 +148,13 @@ def test_format_water_depth_sentence():
 
     msg = format_water_depth_sentence(5.438)
     assert msg == b"$VWDPT,5.4,,*42\r\n"
+    msg = format_water_depth_sentence(-1.0)
+    assert msg == b"$VWDPT,-1.0,,*6F\r\n"
 
 
 def test_format_pressure_sentence():
 
     msg = format_pressure_sentence(102400)
     assert msg == b"!PPRE,102400.0,P*5E\r\n"
+
+
