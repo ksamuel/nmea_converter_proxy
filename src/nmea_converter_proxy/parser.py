@@ -125,6 +125,7 @@ def format_pressure_sentence(pascal):
     data = [
         aanderaa_code + data_code,
         "{:.1f}".format(pascal),
+        'P'
     ]
 
     return format_as_nmea(data, prefix="!")

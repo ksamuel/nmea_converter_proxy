@@ -153,4 +153,4 @@ def test_format_water_depth_sentence():
 def test_format_pressure_sentence():
 
     msg = format_pressure_sentence(102400)
-    assert msg == b"!PPRE,102400.0*22\r\n"
+    assert msg == b"!PPRE,102400.0,P*5E\r\n"
