@@ -8,6 +8,8 @@ from nmea_converter_proxy.parser import (parse_optiplex_message,
                                          format_temperature_sentence,
                                          format_water_depth_sentence,
                                          format_pressure_sentence)
+from nmea_converter_proxy.validation import ensure_awaitable
+
 
 log = logging.getLogger(__name__)
 
@@ -117,11 +119,19 @@ class OptiplexProtocol(asyncio.Protocol):
                 logging.exception(e)
 
 
-class ConcentratorClientProtocol(asyncio.Protocol):
-    """ Connect to the concentrator and forward NMEA messages to it """
+class AutoReconnectProtocol(asyncio.Protocol):
 
-    def __init__(self, on_connection_lost):
-        self.on_connection_lost = on_connection_lost
+    def __init__(self, reconnect_callback, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.reconnect_callback = reconnect_callback
+
+    def connection_lost(self, exc):
+        super().connection_lost(exc)
+        self.reconnect_callback()
+
+
+class ConcentratorClientProtocol(AutoReconnectProtocol):
+    """ Connect to the concentrator and forward NMEA messages to it """
 
     def connection_made(self, transport):
         peername = transport.get_extra_info('peername')
@@ -130,68 +140,6 @@ class ConcentratorClientProtocol(asyncio.Protocol):
 
     def data_received(self, data):
         log.debug('Concentrator responded: {!r}'.format(data.decode()))
-
-    def connection_lost(self, exc):
-        log.warning('Connection to NMEA concentrator lost')
-        self.on_connection_lost()
-
-
-class ConcentratorClient:
-    """ Wraps the protocol to deal with connection lost """
-
-    def __init__(self, loop, ip, port):
-        self.transport = None
-        self.protocol = None
-        self.ip = ip
-        self.port = port
-        self.reconnection_timer = 1
-        self.loop = loop
-        self.schedule_reconnection()
-
-    def schedule_reconnection(self):
-        log.debug('Scheduling reconnection to NMEA concentrator')
-        self.transport = self.protocol = None
-        asyncio.ensure_future(self.ensure_connection())
-
-    async def ensure_connection(self):
-
-        if not self.transport or not self.protocol:
-            try:
-                log.debug('New attempt to connect to NMEA concentrator')
-                coro = self.connect(self.loop, self.ip, self.port)
-                self.transport, self.protocol = await coro
-                # next reconnection 1 seconde after next failure
-                self.reconnection_timer = 1
-            except ConnectionError as e:
-                log.error('Unable to connect to the NMEA concentrator: %s' % e)
-
-                # max reconnection every 10 minutes
-                if self.reconnection_timer < 600:
-                    # increase the time before the next reconnection by 50%
-                    self.reconnection_timer += self.reconnection_timer / 2
-                    msg = 'New reconnection in %s seconds'
-                    log.debug(msg % self.reconnection_timer)
-
-                self.loop.call_later(self.reconnection_timer,
-                                     self.schedule_reconnection)
-
-
-    async def connect(self, loop, ip, port):
-        log.debug('Connecting to NMEA concentrator on %s:%s' % (ip, port))
-
-        def factory():
-            return ConcentratorClientProtocol(self.schedule_reconnection)
-        coro = loop.create_connection(factory, ip, port)
-        return (await coro)
-
-
-    def send(self, message):
-        """ Send the message to the server or log an error """
-        log.debug("Sending '%s' to concentrator" % message)
-        if not self.transport:
-            log.error('Could not send data to NMEA concentrator: not connected')
-        else:
-            self.transport.write(message)
 
 
 class FakeConcentratorProtocol(asyncio.Protocol):
@@ -208,14 +156,119 @@ class FakeConcentratorProtocol(asyncio.Protocol):
         log.info(msg.format(self.peername, data))
 
 
+
+class AutoReconnectTCPClient:
+
+    protocol_factory = None
+    client_name = "TCP client"
+    endpoint_name = None
+
+    def __init__(self, ip, port, endpoint_name=None, client_name=None,
+                 reconnection_timer=1, protocol_factory=None):
+
+        self.transport = self.protocol = None
+
+        self.protocol_factory = protocol_factory or self.protocol_factory
+
+        if not self.protocol_factory:
+            raise ValueError('You must pass a protocol factory')
+
+        self.client_name = client_name or self.client_name
+
+        self.ip = ip
+        self.port = port
+        self.reconnection_timer = 1
+
+        endpoint_name = endpoint_name or self.endpoint_name
+        if endpoint_name:
+            self.endpoint_name = "%s (%s:%s)" % (endpoint_name, ip, port)
+        else:
+            self.endpoint_name = "%s:%s" % (ip, port)
+
+
+    async def ensure_connection(self):
+
+        if not self.transport or self.transport.is_closing():
+            while True:
+                try:
+                    log.debug('New attempt to connect to %s' % self.endpoint_name)
+                    coro = self.create_connection(self.ip, self.port)
+                    self.transport, self.protocol = await coro
+                    # next reconnection 1 seconde after next failure
+                    self.reconnection_timer = 1
+                    break
+                except ConnectionError as e:
+                    msg = 'Unable to connect to %s: %s'
+                    log.error(msg % (self.endpoint_name, e))
+                    self.transport = self.protocol = None
+                    # max reconnection every 10 minutes
+                    if self.reconnection_timer < 600:
+                    # increase the time before the next reconnection by 50%
+                        self.reconnection_timer += self.reconnection_timer / 2
+                    msg = 'New reconnection in %s seconds'
+                    log.debug(msg % self.reconnection_timer)
+                    await asyncio.sleep(self.reconnection_timer)
+
+
+    def connect(self):
+        log.debug('Connecting to %s on %s:%s' % (self.endpoint_name, self.ip, self.port))
+        asyncio.ensure_future(self.ensure_connection())
+
+    async def create_connection(self, ip, port):
+        def factory():
+            return self.protocol_factory(self.connect)
+        loop = asyncio.get_event_loop()
+        con = await asyncio.get_event_loop().create_connection(factory, ip, port)
+        log.debug('Connected to %s on %s:%s' % (self.endpoint_name, ip, port))
+        return con
+
+
+class ConcentratorClient(AutoReconnectTCPClient):
+    protocol_factory = ConcentratorClientProtocol
+    client_name = "Concentrator client"
+    endpoint_name = "NMEA concentrator"
+
+    def send(self, message):
+        """ Send the message to the server or log an error """
+        log.debug("Sending '%s' to concentrator" % message)
+        if not self.transport:
+            log.error('Could not send data to NMEA concentrator: not connected')
+        else:
+            self.transport.write(message)
+
+
+def run_dummy_concentrator(port):
+    """ Start a dummy server acting as a fake concentrator """
+
+    loop = asyncio.get_event_loop()
+    try:
+        coro = loop.create_server(FakeConcentratorProtocol, '127.0.0.1', port)
+        server = loop.run_until_complete(coro)
+    except OSError as e:
+        sys.exit(e)
+
+    msg = 'Fake concentrator listening %s:%s'
+    log.info(msg % server.sockets[0].getsockname())
+
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
+
+    server.close()
+    loop.run_until_complete(server.wait_closed())
+    loop.close()
+
+
+
 def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip,
                magnetic_declination):
     """ Start the event loop with the NMEA converter proxy running """
 
     loop = asyncio.get_event_loop()
 
-    concentrator_client = ConcentratorClient(loop, concentrator_ip,
-                                            concentrator_port)
+    concentrator_client = ConcentratorClient(concentrator_ip, concentrator_port)
+    concentrator_client.connect()
 
     if optiplex_port:
         def create_optiplex_protocol():  # just a factory to pass in the client
@@ -249,27 +302,3 @@ def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip,
     loop.run_until_complete(aanderaa_server.wait_closed())
 
     loop.close()
-
-
-def run_dummy_concentrator(port):
-    """ Start a dummy server acting as a fake concentrator """
-
-    loop = asyncio.get_event_loop()
-    try:
-        coro = loop.create_server(FakeConcentratorProtocol, '127.0.0.1', port)
-        server = loop.run_until_complete(coro)
-    except OSError as e:
-        sys.exit(e)
-
-    msg = 'Fake concentrator listening %s:%s'
-    log.info(msg % server.sockets[0].getsockname())
-
-    try:
-        loop.run_forever()
-    except KeyboardInterrupt:
-        pass
-
-    server.close()
-    loop.run_until_complete(server.wait_closed())
-    loop.close()
-
