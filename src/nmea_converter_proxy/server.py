@@ -8,8 +8,6 @@ from nmea_converter_proxy.parser import (parse_optiplex_message,
                                          format_temperature_sentence,
                                          format_water_depth_sentence,
                                          format_pressure_sentence)
-from nmea_converter_proxy.validation import ensure_awaitable
-
 
 log = logging.getLogger(__name__)
 
@@ -31,7 +29,7 @@ class AanderaaProtocol(asyncio.Protocol):
         log.debug('Data received from {}'.format(self.peername))
         try:
             parsed_data = parse_aanderaa_message(data)
-            log.info("Extracted %s" % parsed_data)
+            log.debug("Extracted %s" % parsed_data)
         except ValueError as e:
             msg = "Unable to parse '{!r}' from {}. Error was: {}"
             log.error(msg.format(data, self.peername, e))
@@ -84,7 +82,7 @@ class OptiplexProtocol(asyncio.Protocol):
         log.debug('Data received from {}'.format(self.peername))
         try:
             parsed_data = parse_optiplex_message(data)
-            log.info("Extracted %s" % parsed_data)
+            log.debug("Extracted %s" % parsed_data)
         except ValueError as e:
             msg = "Unable to parse '{!r}' from {}. Error was: {}"
             log.error(msg.format(data, self.peername, e))
@@ -94,7 +92,7 @@ class OptiplexProtocol(asyncio.Protocol):
         value = parsed_data['value']
         unit = parsed_data['unit']
 
-        if parsed_data['unit'] == "cm":
+        if unit == "cm":
 
             try:
                 water_depth_sentence = format_water_depth_sentence(value)
@@ -106,7 +104,7 @@ class OptiplexProtocol(asyncio.Protocol):
             except Exception as e:
                 logging.exception(e)
 
-        if parsed_data['unit'] == "hPa":
+        if unit == "hPa":
             try:
                 value *= 100
                 pressure_sentence = format_pressure_sentence(value)
@@ -119,18 +117,22 @@ class OptiplexProtocol(asyncio.Protocol):
                 logging.exception(e)
 
 
-class AutoReconnectProtocol(asyncio.Protocol):
+class AutoReconnectProtocolWrapper:
+    """ Wrap a protocol to make it reconnect on connection lost """
 
-    def __init__(self, reconnect_callback, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, wrapped, reconnect_callback):
         self.reconnect_callback = reconnect_callback
+        self.wrapped = wrapped
+
+    def __getattr__(self, value):
+        return getattr(self.wrapped, value)
 
     def connection_lost(self, exc):
-        super().connection_lost(exc)
+        self.wrapped.connection_lost(exc)
         self.reconnect_callback()
 
 
-class ConcentratorClientProtocol(AutoReconnectProtocol):
+class ConcentratorClientProtocol(asyncio.Protocol):
     """ Connect to the concentrator and forward NMEA messages to it """
 
     def connection_made(self, transport):
@@ -155,6 +157,48 @@ class FakeConcentratorProtocol(asyncio.Protocol):
         msg = "FAKE CONCENTRATOR: Data received from {}: '{!r}'"
         log.info(msg.format(self.peername, data))
 
+
+class FakeSensorServer(asyncio.Protocol):
+    """ Send lines of a file to an IP and PORT regularly """
+
+    def __init__(self, name, data_file, interval=1):
+        self.name = "%s fake sensor" % name.upper()
+        self.data_file = data_file
+        self.interval = interval
+
+    def connection_made(self, transport):
+        self.peername = '%s:%s' % transport.get_extra_info('peername')
+        log.info('{}: connection from {}'.format(self.name, self.peername))
+        self.transport = transport
+        asyncio.ensure_future(self.send_data())
+
+    async def send_data(self):
+
+        while self.transport and not self.transport.is_closing():
+            try:
+                for line in self.data_file:
+                    if not self.transport or self.transport.is_closing():
+                        break
+                    self.send(line.encode('ascii'))
+                    await asyncio.sleep(self.interval)
+                self.data_file.seek(0)
+            except EnvironmentError as e:
+                msg = "{}: unable to open data file '{}': {}"
+                log.info(msg.format(self.name, self.data_file, e))
+            await asyncio.sleep(self.interval)
+
+    def connection_lost(self, exc):
+        log.info("%s: connection to %s lost" % (self.name, self.peername))
+
+    def send(self, message):
+        """ Send the message to the server or log an error """
+        if self.transport and not self.transport.is_closing():
+            msg = "{}: Data sent to {}: '{!r}'"
+            log.debug(msg.format(self.name, self.peername, message))
+            self.transport.write(message)
+        else:
+            msg = '%s: could not send data to %s: not connected'
+            log.error(msg % (self.name, self.peername))
 
 
 class AutoReconnectTCPClient:
@@ -185,7 +229,6 @@ class AutoReconnectTCPClient:
         else:
             self.endpoint_name = "%s:%s" % (ip, port)
 
-
     async def ensure_connection(self):
 
         if not self.transport or self.transport.is_closing():
@@ -203,22 +246,23 @@ class AutoReconnectTCPClient:
                     self.transport = self.protocol = None
                     # max reconnection every 10 minutes
                     if self.reconnection_timer < 600:
-                    # increase the time before the next reconnection by 50%
+                        # increase the time before the next reconnection by 50%
                         self.reconnection_timer += self.reconnection_timer / 2
                     msg = 'New reconnection in %s seconds'
                     log.debug(msg % self.reconnection_timer)
                     await asyncio.sleep(self.reconnection_timer)
 
-
     def connect(self):
         log.debug('Connecting to %s on %s:%s' % (self.endpoint_name, self.ip, self.port))
         asyncio.ensure_future(self.ensure_connection())
 
+
     async def create_connection(self, ip, port):
         def factory():
-            return self.protocol_factory(self.connect)
+            return AutoReconnectProtocolWrapper(self.protocol_factory(),
+                                                self.connect)
         loop = asyncio.get_event_loop()
-        con = await asyncio.get_event_loop().create_connection(factory, ip, port)
+        con = await loop.create_connection(factory, ip, port)
         log.debug('Connected to %s on %s:%s' % (self.endpoint_name, ip, port))
         return con
 
@@ -230,11 +274,23 @@ class ConcentratorClient(AutoReconnectTCPClient):
 
     def send(self, message):
         """ Send the message to the server or log an error """
-        log.debug("Sending '%s' to concentrator" % message)
-        if not self.transport:
-            log.error('Could not send data to NMEA concentrator: not connected')
-        else:
+        if self.transport and not self.transport.is_closing():
+            msg = "{}: Data sent to {}: '{!r}'"
+            log.debug(msg.format(self.client_name, self.endpoint_name, message))
             self.transport.write(message)
+        else:
+            msg = '%s: could not send data to %s: not connected'
+            log.error(msg % (self.client_name, self.endpoint_name))
+
+
+class OptiplexClient(AutoReconnectTCPClient):
+    client_name = "Optiplex client"
+    endpoint_name = "Optiplex"
+
+
+class AanderaaClient(AutoReconnectTCPClient):
+    client_name = "Aanderaa client"
+    endpoint_name = "Aanderaa"
 
 
 def run_dummy_concentrator(port):
@@ -254,15 +310,41 @@ def run_dummy_concentrator(port):
         loop.run_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        server.close()
+        loop.run_until_complete(server.wait_closed())
+        loop.close()
 
-    server.close()
-    loop.run_until_complete(server.wait_closed())
-    loop.close()
 
+def run_dummy_sensor(name, port, data_file):
+    """ Start a dummy server acting as a fake concentrator """
+
+    loop = asyncio.get_event_loop()
+
+    def factory():
+        return FakeSensorServer(name, data_file)
+    try:
+        coro = loop.create_server(factory, '0.0.0.0', port)
+        server = loop.run_until_complete(coro)
+    except OSError as e:
+        sys.exit(e)
+
+    msg = 'Fake %s listening to %s:%s'
+    params = (name, *server.sockets[0].getsockname())
+    log.info(msg % params)
+
+    try:
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.close()
+        loop.run_until_complete(server.wait_closed())
+        loop.close()
 
 
 def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip,
-               magnetic_declination):
+               magnetic_declination, optiplex_ip, aanderaa_ip):
     """ Start the event loop with the NMEA converter proxy running """
 
     loop = asyncio.get_event_loop()
@@ -271,22 +353,20 @@ def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip,
     concentrator_client.connect()
 
     if optiplex_port:
-        def create_optiplex_protocol():  # just a factory to pass in the client
+        def factory():
             return OptiplexProtocol(concentrator_client)
-        coro = loop.create_server(create_optiplex_protocol, '0.0.0.0', optiplex_port)
-        optiplex_server = loop.run_until_complete(coro)
-        con = optiplex_server.sockets[0].getsockname()
-        log.info('Waiting for optiplex messages on %s:%s' % con)
+        optiplex_client = OptiplexClient(optiplex_ip, optiplex_port,
+                                         protocol_factory=factory)
+        optiplex_client.connect()
     else:
         log.warning('Optiplex not configured')
 
     if aanderaa_port:
-        def create_aanderaa_protocol():  # just a factory to pass in the client
+        def factory():
             return AanderaaProtocol(concentrator_client, magnetic_declination)
-        coro = loop.create_server(create_aanderaa_protocol, '0.0.0.0', aanderaa_port)
-        aanderaa_server = loop.run_until_complete(coro)
-        con = aanderaa_server.sockets[0].getsockname()
-        log.info('Waiting for aanderaa messages on %s:%s' % con)
+        aanderaa_client = AanderaaClient(aanderaa_ip, aanderaa_port,
+                                         protocol_factory=factory)
+        aanderaa_client.connect()
     else:
         log.warning('Aanderaa not configured')
 
@@ -294,11 +374,11 @@ def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip,
         loop.run_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        optiplex_client.close()
+        loop.run_until_complete(optiplex_client.wait_closed())
 
-    optiplex_server.close()
-    loop.run_until_complete(optiplex_server.wait_closed())
+        aanderaa_client.close()
+        loop.run_until_complete(aanderaa_client.wait_closed())
 
-    aanderaa_server.close()
-    loop.run_until_complete(aanderaa_server.wait_closed())
-
-    loop.close()
+        loop.close()

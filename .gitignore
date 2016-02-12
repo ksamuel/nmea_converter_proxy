@@ -69,3 +69,7 @@ htmlcov
 
 # editors
 *.sublime*
+
+# tempfile
+*.tmp
+*~

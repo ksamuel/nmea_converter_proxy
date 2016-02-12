@@ -42,6 +42,8 @@ def load_config(config_file):
         try:
             log.debug('Getting optiplex port')
             optiplex_port = check_port(cfg.get('optiplex', 'port'))
+            log.debug('Getting optiplex IP')
+            optiplex_ip = check_ipv4(cfg.get('optiplex', 'ip'))
         except configparser.NoOptionError as e:
             raise ConfigurationError('The configuration file is incomplete: %s' % e)
         except configparser.NoSectionError:
@@ -54,6 +56,8 @@ def load_config(config_file):
             magnetic_declination = float(cfg.get('aanderaa', 'magnetic_declination'))
             msg = "Declination must be a number between -50 and 50"
             assert -50 <= magnetic_declination <= 50, msg
+            log.debug('Getting aanderaa IP')
+            aanderaa_ip = check_ipv4(cfg.get('aanderaa', 'ip'))
         except configparser.NoOptionError as e:
             raise ConfigurationError('The configuration file is incomplete: %s' % e)
         except configparser.NoSectionError:
@@ -68,9 +72,10 @@ def load_config(config_file):
        "aanderaa_port": aanderaa_port,
        "concentrator_port": concentrator_port,
        "concentrator_ip": concentrator_ip,
-       "magnetic_declination": magnetic_declination
+       "magnetic_declination": magnetic_declination,
+       "optiplex_ip": optiplex_ip,
+       "aanderaa_ip": aanderaa_ip
     }
-
 
 
 class LoggerConfig:

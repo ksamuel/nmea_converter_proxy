@@ -2,14 +2,16 @@
 import pathlib
 import logging
 import sys
-import re
 import configparser
 
 from os.path import expanduser
 
-from nmea_converter_proxy.server import run_server, run_dummy_concentrator
-from nmea_converter_proxy.conf import load_config, LoggerConfig, LOG_FILE
-from nmea_converter_proxy.validation import check_ipv4, check_port
+from nmea_converter_proxy.utils import text_resource_stream
+from nmea_converter_proxy.server import (run_server, run_dummy_concentrator,
+                                         run_dummy_sensor)
+from nmea_converter_proxy.conf import load_config, LOG_FILE
+from nmea_converter_proxy.validation import (check_ipv4, check_port,
+                                             ValidationError, check_file)
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +26,7 @@ def run_cmd(args):
     config_file = pathlib.Path(args.config_file)
     try:
         conf = load_config(config_file)
-    except ConfigurationError as e:
+    except configparser.ConfigurationError as e:
         exit_on_error(e)
     run_server(**conf)
 
@@ -46,25 +48,27 @@ def init_cmd(args):
             except ValueError as e:
                 print(e)
 
-    while True:
-        msg = 'IP of the NMEA concentrator [default is 127.0.0.1]: '
-        concentrator_ip = input(msg)
-        if not concentrator_ip:
-            concentrator_ip = "127.0.0.1"
-        try:
-            concentrator_ip = check_ipv4(concentrator_ip)
-            break
-        except ValueError as e:
-            print(e)
+    def request_ip(msg, default="127.0.0.1"):
+        while True:
+            ip = input(msg % default)
+            if not ip:
+                ip = default
+            try:
+                return check_ipv4(ip)
+            except ValueError as e:
+                print(e)
 
+    concentrator_ip = request_ip('IP of the NMEA concentrator [%s]: ')
     concentrator_port = request_port('Port of the NMEA concentrator [%s]: ')
 
+    optiplex_ip = request_ip('IP for incomming Optiplex messages [%s]: ')
     optiplex_port = request_port('Port for incomming Optiplex messages [%s]: ')
 
+    aanderaa_ip = request_ip('IP for incomming Aanderaa messages [%s]: ')
     aanderaa_port = request_port('Port for incomming Aanderaa messages [%s]: ')
 
     while True:
-        msg = 'Magnetic declination for the aanderaa sensor [default is 0.5]'
+        msg = 'Magnetic declination for the aanderaa sensor [0.5]: '
         magnetic_declination = input(msg)
         if not magnetic_declination:
             magnetic_declination = -0.5
@@ -72,7 +76,7 @@ def init_cmd(args):
             magnetic_declination = float(magnetic_declination)
             assert -50 <= magnetic_declination <= 50
             break
-        except (ValueError, AssertionError) as e:
+        except (ValueError, AssertionError):
             print("Magnetic declination must be a number between -50 and 50")
 
     home = pathlib.Path(expanduser("~"))
@@ -92,8 +96,10 @@ def init_cmd(args):
                 cfg = configparser.ConfigParser()
                 cfg.add_section('optiplex')
                 cfg.set('optiplex', 'port', str(optiplex_port))
+                cfg.set('optiplex', 'ip', optiplex_ip)
                 cfg.add_section('aanderaa')
                 cfg.set('aanderaa', 'port', str(aanderaa_port))
+                cfg.set('aanderaa', 'ip', aanderaa_ip)
                 cfg.set('aanderaa', 'magnetic_declination', str(magnetic_declination))
                 cfg.add_section('concentrator')
                 cfg.set('concentrator', 'ip', concentrator_ip)
@@ -109,7 +115,6 @@ def init_cmd(args):
             print("Cannot write a file to '%s'" % config_file)
 
 
-# FAKECONCENTRATOR subcommand
 def fake_concentrator_cmd(args):
     try:
         port = check_port(args.port)
@@ -118,7 +123,46 @@ def fake_concentrator_cmd(args):
     run_dummy_concentrator(port)
 
 
-# LOG subcommand
+def fake_optiplex_cmd(args):
+    try:
+        port = check_port(args.port)
+    except ValueError as e:
+        sys.exit(e)
+
+    if args.data_file:
+        try:
+            data_file = check_file(args.data_file)
+            data_file = data_file.open()
+        except ValidationError as e:
+            sys.exit(e)
+    else:
+        data_file = text_resource_stream('fixtures/optiplex_fake_data.txt',
+                                         "nmea_converter_proxy",
+                                         newline='\r\n')
+
+    run_dummy_sensor("optiplex", port, data_file)
+
+
+def fake_aanderaa_cmd(args):
+    try:
+        port = check_port(args.port)
+    except ValueError as e:
+        sys.exit(e)
+
+    if args.data_file:
+        try:
+            data_file = check_file(args.data_file)
+            data_file = data_file.open()
+        except ValidationError as e:
+            sys.exit(e)
+    else:
+        data_file = text_resource_stream('fixtures/aanderaa_fake_data.txt',
+                                         "nmea_converter_proxy",
+                                         newline='\r\n')
+
+    run_dummy_sensor("aanderaa", port, data_file)
+
+
 def log_file_cmd(args):
     try:
         with LOG_FILE.open() as f:

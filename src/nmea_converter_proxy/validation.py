@@ -1,5 +1,11 @@
 import re
 import inspect
+import pathlib
+import asyncio
+
+
+class ValidationError(Exception):
+    pass
 
 
 def check_port(port, _used_ports=()):
@@ -22,6 +28,14 @@ def check_ipv4(ip):
     return ip
 
 
+def check_file(path):
+    path = pathlib.Path(path)
+    try:
+        path.open().readline()
+    except Exception as e:
+        raise ValidationError("Unable to open file '%s': %s" % e)
+
+
 def ensure_awaitable(callable_obj):
 
     if not inspect.isawaitable(callable_obj):
@@ -38,6 +52,6 @@ def ensure_awaitable(callable_obj):
 
         # If a normal function is passed, wrap it as a coroutine.
         else:
-            callable_obj = asyncio.coroutine(handler)()
+            callable_obj = asyncio.coroutine(callable_obj)()
 
     return callable_obj
