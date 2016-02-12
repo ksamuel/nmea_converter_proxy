@@ -22,6 +22,14 @@ LOG_FILE = TMP_DIR / 'nmea_converter_proxy.log'
 
 def load_config(config_file):
 
+    optiplex_port = None
+    aanderaa_port = None
+    concentrator_port = None
+    concentrator_ip = None
+    magnetic_declination = None
+    optiplex_ip = None
+    aanderaa_ip = None
+
     if not config_file.is_file():
         raise ConfigurationError('You must provide a configuration file')
 

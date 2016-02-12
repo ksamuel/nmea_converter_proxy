@@ -9,7 +9,7 @@ from os.path import expanduser
 from nmea_converter_proxy.utils import text_resource_stream
 from nmea_converter_proxy.server import (run_server, run_dummy_concentrator,
                                          run_dummy_sensor)
-from nmea_converter_proxy.conf import load_config, LOG_FILE
+from nmea_converter_proxy.conf import load_config, LOG_FILE, ConfigurationError
 from nmea_converter_proxy.validation import (check_ipv4, check_port,
                                              ValidationError, check_file)
 
@@ -26,7 +26,7 @@ def run_cmd(args):
     config_file = pathlib.Path(args.config_file)
     try:
         conf = load_config(config_file)
-    except configparser.ConfigurationError as e:
+    except ConfigurationError as e:
         exit_on_error(e)
     run_server(**conf)
 

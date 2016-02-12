@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import sys
+import tempfile
+import pathlib
 
 from nmea_converter_proxy.parser import (parse_optiplex_message,
                                          parse_aanderaa_message,
@@ -24,9 +26,18 @@ class AanderaaProtocol(asyncio.Protocol):
         log.info('Connection from {}'.format(peername))
         self.transport = transport
         self.peername = peername
+        self.buffer = bytearray()
 
     def data_received(self, data):
-        log.debug('Data received from {}'.format(self.peername))
+        log.debug('Data received from {}: "{!r}"'.format(self.peername, data))
+
+        self.buffer.extend(data)
+        if data == b'\n':
+            log.debug('Buffer is ready "{!r}"'.format(self.buffer))
+            self.process_full_message(self.buffer.replace(b'\x00', b' '))
+            self.buffer = bytearray()
+
+    def process_full_message(self, data):
         try:
             parsed_data = parse_aanderaa_message(data)
             log.debug("Extracted %s" % parsed_data)
@@ -79,7 +90,7 @@ class OptiplexProtocol(asyncio.Protocol):
         self.peername = peername
 
     def data_received(self, data):
-        log.debug('Data received from {}'.format(self.peername))
+        log.debug('Data received from {}: "{!r}"'.format(self.peername, data))
         try:
             parsed_data = parse_optiplex_message(data)
             log.debug("Extracted %s" % parsed_data)
@@ -95,7 +106,7 @@ class OptiplexProtocol(asyncio.Protocol):
         if unit == "cm":
 
             try:
-                water_depth_sentence = format_water_depth_sentence(value)
+                water_depth_sentence = format_water_depth_sentence(value / 100)
                 self.client.send(water_depth_sentence)
             except ValueError as e:
                 msg = ("Unable to convert '{!r}' from {} to NMEA water depth "
@@ -152,10 +163,14 @@ class FakeConcentratorProtocol(asyncio.Protocol):
         log.info('FAKE CONCENTRATOR: Connection from {}'.format(peername))
         self.transport = transport
         self.peername = peername
+        dump_path = pathlib.Path(tempfile.gettempdir()) / "nmea_concentrator.dump"
+        self.dump = dump_path.open(mode='ab')
 
     def data_received(self, data):
         msg = "FAKE CONCENTRATOR: Data received from {}: '{!r}'"
         log.info(msg.format(self.peername, data))
+        self.dump.write(data)
+        self.dump.flush()
 
 
 class FakeSensorServer(asyncio.Protocol):

@@ -109,7 +109,7 @@ def format_water_depth_sentence(meters):
 
     data = [
         aanderaa_code + data_code,
-        "{:.1f}".format(meters),
+        "{:.2f}".format(meters),
         "",
         ""
     ]
