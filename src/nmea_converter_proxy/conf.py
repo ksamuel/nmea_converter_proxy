@@ -72,8 +72,24 @@ def load_config(config_file):
             aanderaa_port = None
             magnetic_declination = None
 
-    except (ValueError, AssertionError, EnvironmentError, configparser.ParsingError) as e:
+    except (ValueError, AssertionError, EnvironmentError, configparser.ParsingError, configparser.DuplicateSectionError) as e:
         raise ConfigurationError('Error while loading config file "%s": %s' % (config_file, e))
+
+    additional_sensors = {}
+    for section in cfg.sections():
+        if section not in ('concentrator', 'optiplex', 'aanderaa'):
+            if section.startswith('sensor:'):
+                name = section.replace('sensor:', '')
+
+                try:
+                    log.debug('Getting %s port' % name)
+                    port = check_port(cfg.get(section, 'port'))
+                    log.debug('Getting %s IP' % name)
+                    ip = check_ipv4(cfg.get(section, 'ip'))
+                except configparser.NoOptionError as e:
+                    raise ConfigurationError('The configuration file is incomplete: %s' % e)
+
+                additional_sensors[name] = {'port': port, 'ip': ip}
 
     return {
        "optiplex_port": optiplex_port,
@@ -82,7 +98,8 @@ def load_config(config_file):
        "concentrator_ip": concentrator_ip,
        "magnetic_declination": magnetic_declination,
        "optiplex_ip": optiplex_ip,
-       "aanderaa_ip": aanderaa_ip
+       "aanderaa_ip": aanderaa_ip,
+       "additional_sensors": additional_sensors
     }
 
 

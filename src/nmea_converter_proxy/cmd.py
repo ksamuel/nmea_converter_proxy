@@ -18,14 +18,13 @@ log = logging.getLogger(__name__)
 
 
 
-
 # RUN subcommand
 def run_cmd(args):
     config_file = pathlib.Path(args.config_file)
     try:
         conf = load_config(config_file)
     except ConfigurationError as e:
-        exit_on_error(e)
+        sys.exit(e)
     run_server(**conf)
 
 
@@ -77,6 +76,19 @@ def init_cmd(args):
         except (ValueError, AssertionError):
             print("Magnetic declination must be a number between -50 and 50")
 
+    additional_sensors = {}
+    while True:
+        add_sensor = input('Do you want to add an arbitrary sensor ? [y/N] ')
+        if add_sensor.lower() in ('n', 'no', ''):
+            break
+
+        name = None
+        while not name:
+            name = input('Give a name to the sensor: ')
+        ip = request_ip('IP of the {} sensor [%s]: '.format(name))
+        port = request_port('Port of the {} sensor [%s]: '.format(name))
+        additional_sensors[name] = {'ip': ip, 'port': port}
+
     home = pathlib.Path(expanduser("~"))
     default_config_file = home / 'nmea_converter_proxy.ini'
     while True:
@@ -102,6 +114,13 @@ def init_cmd(args):
                 cfg.add_section('concentrator')
                 cfg.set('concentrator', 'ip', concentrator_ip)
                 cfg.set('concentrator', 'port', str(concentrator_port))
+
+                for name, values in additional_sensors.items():
+                    section = "sensor:%s" % name
+                    cfg.add_section(section)
+                    cfg.set(section, 'ip', values['ip'])
+                    cfg.set(section, 'port', str(values['port']))
+
                 cfg.write(f)
 
                 print('File config file saved.')

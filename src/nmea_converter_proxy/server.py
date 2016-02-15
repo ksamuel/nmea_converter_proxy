@@ -196,8 +196,29 @@ class AanderaaClient(AutoReconnectTCPClient):
     endpoint_name = "Aanderaa"
 
 
+class GenericProxyProtocol(asyncio.Protocol):
+
+    def __init__(self, name, concentrator_server):
+        self.concentrator = concentrator_server
+        self.name = name
+
+    def connection_made(self, transport):
+        peername = self.name + ' %s:%s' % transport.get_extra_info('peername')
+        log.info('Connection from {}'.format(peername))
+        self.transport = transport
+        self.peername = peername
+
+    def data_received(self, data):
+        log.debug('Data received from {}: "{!r}"'.format(self.peername, data))
+        self.concentrator_server.send(data)
+
+
+class GenericProxyClient(AutoReconnectTCPClient):
+    protocol_factory = GenericProxyProtocol
+
+
 def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip,
-               magnetic_declination, optiplex_ip, aanderaa_ip):
+               magnetic_declination, optiplex_ip, aanderaa_ip, additional_sensors):
     """ Start the event loop with the NMEA converter proxy running """
 
     concentrator_server = ConcentratorServer(concentrator_ip, concentrator_port)
@@ -225,14 +246,28 @@ def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip,
     else:
         log.warning('Aanderaa not configured')
 
-
     loop = asyncio.get_event_loop()
+
+    sensor_clients = []
+    for name, config in additional_sensors.items():
+
+        def factory():
+            return GenericProxyProtocol(name, concentrator_server)
+
+        client = GenericProxyClient(**config, endpoint_name=name,
+                                    protocol_factory=factory)
+        sensor_clients.append(client.connect())
 
     try:
         loop.run_forever()
     except KeyboardInterrupt:
         pass
     finally:
+
+        for client in sensor_clients:
+            optiplex_client.close()
+            loop.run_until_complete(optiplex_client.wait_closed())
+
         optiplex_client.close()
         loop.run_until_complete(optiplex_client.wait_closed())
 
