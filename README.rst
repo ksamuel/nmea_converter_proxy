@@ -21,7 +21,7 @@ Unzip nmea_converter_proxy.zip. Hold Ctrl and right click on the directory icon 
 Type::
 
 
-    python setup.py install
+    python -m pip install .  
     python -m nmea_converter_proxy init
 
 
