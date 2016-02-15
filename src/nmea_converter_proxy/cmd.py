@@ -7,8 +7,9 @@ import configparser
 from os.path import expanduser
 
 from nmea_converter_proxy.utils import text_resource_stream
-from nmea_converter_proxy.server import (run_server, run_dummy_concentrator,
-                                         run_dummy_sensor)
+from nmea_converter_proxy.server import run_server
+from nmea_converter_proxy.test_tools import (run_dummy_concentrator,
+                                             run_dummy_sensor)
 from nmea_converter_proxy.conf import load_config, LOG_FILE, ConfigurationError
 from nmea_converter_proxy.validation import (check_ipv4, check_port,
                                              ValidationError, check_file)
@@ -16,9 +17,6 @@ from nmea_converter_proxy.validation import (check_ipv4, check_port,
 log = logging.getLogger(__name__)
 
 
-def exit_on_error(msg):
-    log.error(msg)
-    sys.exit(1)
 
 
 # RUN subcommand
@@ -37,7 +35,7 @@ def init_cmd(args):
 
     def request_port(msg, _used_ports=[]):
         while True:
-            default_port = port = next(iter(_used_ports), 8499) + 1
+            default_port = next(iter(_used_ports), 8499) + 1
             port = input(msg % default_port)
             if not port:
                 port = default_port
@@ -136,7 +134,8 @@ def fake_optiplex_cmd(args):
         except ValidationError as e:
             sys.exit(e)
     else:
-        data_file = text_resource_stream('fixtures/optiplex_fake_data.txt',
+        fixtures = 'test_tools/fixtures/optiplex_fake_data.txt'
+        data_file = text_resource_stream(fixtures,
                                          "nmea_converter_proxy",
                                          newline='\r\n')
 
@@ -156,7 +155,8 @@ def fake_aanderaa_cmd(args):
         except ValidationError as e:
             sys.exit(e)
     else:
-        data_file = text_resource_stream('fixtures/aanderaa_fake_data.txt',
+        fixtures = 'test_tools/fixtures/aanderaa_fake_data.txt'
+        data_file = text_resource_stream(fixtures,
                                          "nmea_converter_proxy",
                                          newline='\r\n')
 

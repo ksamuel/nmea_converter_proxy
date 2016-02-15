@@ -147,9 +147,9 @@ def test_format_temperature_sentence():
 def test_format_water_depth_sentence():
 
     msg = format_water_depth_sentence(5.438)
-    assert msg == b"$VWDPT,5.4,,*42\r\n"
+    assert msg == b"$VWDPT,5.44,,*76\r\n"
     msg = format_water_depth_sentence(-1.0)
-    assert msg == b"$VWDPT,-1.0,,*6F\r\n"
+    assert msg == b"$VWDPT,-1.00,,*5F\r\n"
 
 
 def test_format_pressure_sentence():
