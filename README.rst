@@ -35,32 +35,58 @@ Open a new terminal windows and type::
     python -m nmea_converter_proxy run "c:\path\to\your\config\file.ini"
 
 Config file format::
-    
+
     [optiplex]
-    port = port where the optiplex sensor sends messages to
-    
+    ip = IPV4 address we will use to connect to the optiplex
+    port = port we will use to connect to the optiplex
+
     [aanderaa]
-    port = port where the aanderaa sensor sends messages to
+    ip = IPV4 address we will use to connect to the aanderaa
+    port = port we will use to connect to the aanderaa
     magnetic_declination = magnetic declination at the sensor location
-    
+
+    # Line starting with # is a comment. It does nothing but helps to document
+    # your configuration.
+
     [concentrator]
-    ip = IPV4 address where the NMEA concentrator is located
-    port = port the NMEA concentrator is expecting messages
-    
+    ip = IPV4 address where the concentrator is going to listen for clients
+    port = port the where the concentrator is going to listen for clients
+
+    # You can have as many "sensor:" sections as you want. All messages
+    # retrieved from these will be forwarded as is by the concentrator.
+
+    [sensor:an abitrary sensor name]
+    ip = IPV4 address we will use to connect to this sensor
+    port = port we will use to connect to this sensor
+
+    [sensor:another sensor]
+    ip = IPV4 address we will use to connect to this sensor
+    port = port we will use to connect to this sensor
+
 
 Example::
 
     [optiplex]
+    ip = 45.32.00.17
     port = 8502
-    
+
     [aanderaa]
+    ip = 45.32.00.17
     port = 8501
     magnetic_declination = -0.5
-    
+
     [concentrator]
     ip = 89.32.00.1
-    port = 8500
+    port = 1245
 
+    [sensor:bay1]
+    ip = 45.32.00.17
+    port = 8502
+
+    # Sensor disabled for maintenance.
+    #[sensor:bay2]
+    #ip = 45.32.00.17
+    #port = 8500
 
 
 NMEA massages formats
@@ -79,7 +105,7 @@ E.G::
 Temperature sentence::
 
     $VWMTW,<celsius degrees>,C*<checksum>\r\n
-    
+
 E.G::
 
     $VWMTW,17.1,C*15\r\n
@@ -92,7 +118,7 @@ E.G::
 
     $VWDPT,5.4,,*42\r\n
     $VWDPT,-1.0,,*6F\r\n
-    
+
 
 
 Pressure sentence::
@@ -102,7 +128,7 @@ Pressure sentence::
 E.G::
 
     !PPRE,102400.0,P*5E\r\n
-    
+
 Note that, because I couldn't find a suitable message to send pressure, I had to use NEMA hability to define a proprietary format with "!".
 
 
@@ -132,10 +158,10 @@ If you can't run the command "python", make sure you have the directory containi
 
 If you have several versions of Python installed at the same time, you can run a one in particular by doing::
 
-    
+
     C:\direct\path\to\python.exe nmea_converter_proxy [command]
-    
-    
+
+
 Activate more verbosity by activating the debug mode::
 
 
@@ -149,7 +175,7 @@ Install in editable mode::
 
 
     python -m pip install -e .[dev]
-    
+
 Run a fake concentrator::
 
     python -m nmea_converter_proxy fakeconcentrator

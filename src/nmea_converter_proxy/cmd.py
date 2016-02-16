@@ -3,6 +3,8 @@ import pathlib
 import logging
 import sys
 import configparser
+import io
+import uuid
 
 from os.path import expanduser
 
@@ -180,6 +182,20 @@ def fake_aanderaa_cmd(args):
                                          newline='\r\n')
 
     run_dummy_sensor("aanderaa", port, data_file)
+
+
+def fake_generic_sensor(args):
+    try:
+        port = check_port(args.port)
+    except ValueError as e:
+        sys.exit(e)
+
+    data_file = io.StringIO(newline='\r\n')
+    uids = (uuid.uuid4().hex + "\r\n" for x in range(10))
+    data_file.writelines(uids)
+    data_file.seek(0)
+
+    run_dummy_sensor("generic", port, data_file)
 
 
 def log_file_cmd(args):
