@@ -5,7 +5,7 @@ import sys
 
 from nmea_converter_proxy.cmd import (run_cmd, init_cmd, fake_concentrator_cmd,
                                       log_file_cmd, fake_aanderaa_cmd,
-                                      fake_optiplex_cmd)
+                                      fake_optiplex_cmd, fake_generic_sensor)
 from nmea_converter_proxy.conf import LoggerConfig, LOG_FILE
 
 logger_config = LoggerConfig('nmea_converter_proxy', LOG_FILE, logging.DEBUG)
@@ -41,6 +41,10 @@ fake_optiplex.set_defaults(func=fake_optiplex_cmd)
 fake_optiplex.add_argument('data_file', metavar="DATA_FILE", nargs='?',
                            help='File containing fake data to send')
 fake_optiplex.add_argument('--port', default=8501, nargs='?')
+
+fake_optiplex = subparsers.add_parser('fakegenericsensor')
+fake_optiplex.set_defaults(func=fake_generic_sensor)
+fake_optiplex.add_argument('--port', default=8503, nargs='?')
 
 args = parser.parse_args()
 logger_config.debug_mode(args.debug)

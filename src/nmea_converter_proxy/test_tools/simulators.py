@@ -6,7 +6,7 @@ import logging
 import pathlib
 import tempfile
 
-from nmea_converter_proxy.mixins import AutoReconnectTCPClient
+from nmea_converter_proxy.clients import AutoReconnectTCPClient
 
 log = logging.getLogger(__name__)
 
