@@ -66,7 +66,7 @@ class AutoReconnectTCPClient:
                     # next reconnection 1 seconde after next failure
                     self.reconnection_timer = 1
                     break
-                except ConnectionError as e:
+                except (ConnectionError, OSError) as e:
                     msg = 'Unable to connect to %s: %s'
                     log.error(msg % (self.endpoint_name, e))
                     self.transport = self.protocol = None
@@ -218,8 +218,8 @@ class OptiplexProtocol(asyncio.Protocol):
 
 
 class OptiplexClient(AutoReconnectTCPClient):
-    client_name = "Optiplex client"
-    endpoint_name = "Optiplex"
+    client_name = " Krohne Optiflex tide sensor client"
+    endpoint_name = " Krohne Optiflex tide sensor"
 
     def __init__(self, concentrator_server, ip, port, *args, **kwargs):
 
@@ -229,8 +229,8 @@ class OptiplexClient(AutoReconnectTCPClient):
 
 
 class AanderaaClient(AutoReconnectTCPClient):
-    client_name = "Aanderaa client"
-    endpoint_name = "Aanderaa"
+    client_name = "Aanderaa 4100R current metter client"
+    endpoint_name = "Aanderaa 4100R current metter"
 
     def __init__(self, concentrator_server, ip, port, *args, **kwargs):
 

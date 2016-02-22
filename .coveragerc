@@ -5,3 +5,7 @@ source = src/nmea_converter_proxy
 
 [report]
 fail_under = 80
+exclude_lines =
+    pragma: no cover
+    pass
+    noqa;

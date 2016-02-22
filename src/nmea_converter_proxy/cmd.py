@@ -34,9 +34,9 @@ def run_cmd(args):
 def init_cmd(args):
     print('This will generate the config file. ')
 
-    def request_port(msg, _used_ports=[]):
+    def request_port(msg, _used_ports=[], default=None):
         while True:
-            default_port = next(iter(_used_ports), 8499) + 1
+            default_port = default or next(iter(_used_ports), 8499) + 1
             port = input(msg % default_port)
             if not port:
                 port = default_port
@@ -58,13 +58,18 @@ def init_cmd(args):
                 print(e)
 
     concentrator_ip = request_ip('IP of the NMEA concentrator [%s]: ')
-    concentrator_port = request_port('Port of the NMEA concentrator [%s]: ')
+    msg = 'Port of the NMEA concentrator [%s]: '
+    concentrator_port = request_port(msg, default=1240)
 
-    optiplex_ip = request_ip('IP for incomming Optiplex messages [%s]: ')
-    optiplex_port = request_port('Port for incomming Optiplex messages [%s]: ')
+    msg = 'IP for incomming the Krohne Optiflex tide sensor messages [%s]: '
+    optiplex_ip = request_ip(msg, "10.3.3.10")
+    msg = 'Port for incomming Krohne Optiflex tide senso messages [%s]: '
+    optiplex_port = request_port(msg, default=5300)
 
-    aanderaa_ip = request_ip('IP for incomming Aanderaa messages [%s]: ')
-    aanderaa_port = request_port('Port for incomming Aanderaa messages [%s]: ')
+    msg = 'IP for incomming Aanderaa 4100R current metter messages [%s]: '
+    aanderaa_ip = request_ip(msg, "10.3.3.52")
+    msg = 'Port for Aanderaa 4100R current metter Aanderaa messages [%s]: '
+    aanderaa_port = request_port(msg, default=5200)
 
     while True:
         msg = 'Magnetic declination for the aanderaa sensor [0.5]: '
