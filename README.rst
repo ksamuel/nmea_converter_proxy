@@ -21,7 +21,7 @@ Unzip nmea_converter_proxy.zip. Hold Ctrl and right click on the directory icon 
 Type::
 
 
-    python -m pip install .  
+    python -m pip install .  # add --upgrade in case you already have an install
     python -m nmea_converter_proxy init
 
 
@@ -198,3 +198,11 @@ Install and run tox to check coverage and unit test at once::
 
     python -m pip install tox
     python -m tox
+
+
+Uninstall
+============
+
+In a terminal::
+
+    python -m pip uninstall nmea_converter_proxy

@@ -66,9 +66,9 @@ def init_cmd(args):
     msg = 'Port for incomming Krohne Optiflex tide senso messages [%s]: '
     optiplex_port = request_port(msg, default=5300)
 
-    msg = 'IP for incomming Aanderaa 4100R current metter messages [%s]: '
+    msg = 'IP for incomming Aanderaa 4100R current meter messages [%s]: '
     aanderaa_ip = request_ip(msg, "10.3.3.52")
-    msg = 'Port for Aanderaa 4100R current metter Aanderaa messages [%s]: '
+    msg = 'Port for Aanderaa 4100R current meter Aanderaa messages [%s]: '
     aanderaa_port = request_port(msg, default=5200)
 
     while True:

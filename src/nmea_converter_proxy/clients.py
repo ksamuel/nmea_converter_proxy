@@ -10,7 +10,7 @@ from nmea_converter_proxy.parser import (parse_optiplex_message,
                                          format_pressure_sentence)
 
 log = logging.getLogger(__name__)
-
+asyncio.get_event_loop().set_debug(True)
 
 class AutoReconnectProtocolWrapper:
     """ Wrap a protocol to make it reconnect on connection lost """
@@ -117,10 +117,9 @@ class GenericProxyProtocol(asyncio.Protocol):
 class AanderaaProtocol(GenericProxyProtocol):
     """ Receive, parse, convert and forward the aanderaa messages"""
 
-    def __init__(self, concentrator_server, magnetic_declination):
-        self.concentrator = concentrator_server
+    def __init__(self, name, concentrator_server, magnetic_declination):
         self.magnetic_declination = magnetic_declination
-        super().__init__("Aanderaa", concentrator_server)
+        super().__init__(name, concentrator_server)
 
     def connection_made(self, transport):
         super().connection_made(transport)
@@ -153,7 +152,7 @@ class AanderaaProtocol(GenericProxyProtocol):
             }
 
             water_flow_sentence = format_water_flow_sentence(**args)
-            self.concentrator.send(water_flow_sentence)
+            self.concentrator_server.send(water_flow_sentence)
         except ValueError as e:
             msg = ("Unable to convert '{!r}' from {} to NMEA water flow "
                    "sentence. Error was: {}")
@@ -164,7 +163,7 @@ class AanderaaProtocol(GenericProxyProtocol):
         try:
             temperature = parsed_data['temperature']
             temperature_sentence = format_temperature_sentence(temperature)
-            self.concentrator.send(temperature_sentence)
+            self.concentrator_server.send(temperature_sentence)
         except ValueError as e:
             msg = ("Unable to convert '{!r}' from {} to NMEA temperature "
                    "sentence. Error was: {}")
@@ -173,11 +172,11 @@ class AanderaaProtocol(GenericProxyProtocol):
             logging.exception(e)
 
 
-class OptiplexProtocol(asyncio.Protocol):
+class OptiplexProtocol(GenericProxyProtocol):
     """ Receive, parse, convert and forward the optiplex messages"""
 
-    def __init__(self, concentrator_server):
-        super().__init__("Optiplex", concentrator_server)
+    def connection_made(self, transport):
+        super().connection_made(transport)
 
     def send(self, data):
         try:
@@ -196,7 +195,7 @@ class OptiplexProtocol(asyncio.Protocol):
 
             try:
                 water_depth_sentence = format_water_depth_sentence(value / 100)
-                self.concentrator.send(water_depth_sentence)
+                self.concentrator_server.send(water_depth_sentence)
             except ValueError as e:
                 msg = ("Unable to convert '{!r}' from {} to NMEA water depth "
                        "sentence. Error was: {}")
@@ -208,7 +207,7 @@ class OptiplexProtocol(asyncio.Protocol):
             try:
                 value *= 100
                 pressure_sentence = format_pressure_sentence(value)
-                self.concentrator.send(pressure_sentence)
+                self.concentrator_server.send(pressure_sentence)
             except ValueError as e:
                 msg = ("Unable to convert '{!r}' from {} to NMEA temperature "
                        "sentence. Error was: {}")
@@ -219,23 +218,25 @@ class OptiplexProtocol(asyncio.Protocol):
 
 class OptiplexClient(AutoReconnectTCPClient):
     client_name = " Krohne Optiflex tide sensor client"
-    endpoint_name = " Krohne Optiflex tide sensor"
+    endpoint_name = "Krohne Optiflex tide sensor"
 
     def __init__(self, concentrator_server, ip, port, *args, **kwargs):
 
         def factory():
-            return OptiplexProtocol(concentrator_server)
+            return OptiplexProtocol(self.client_name, concentrator_server)
         super().__init__(ip, port, protocol_factory=factory)
 
 
 class AanderaaClient(AutoReconnectTCPClient):
-    client_name = "Aanderaa 4100R current metter client"
-    endpoint_name = "Aanderaa 4100R current metter"
+    client_name = "Aanderaa 4100R current meter client"
+    endpoint_name = "Aanderaa 4100R current meter"
 
-    def __init__(self, concentrator_server, ip, port, *args, **kwargs):
+    def __init__(self, concentrator_server, magnetic_declination, 
+                 ip, port, *args, **kwargs):
 
         def factory():
-            return AanderaaProtocol(concentrator_server)
+            return AanderaaProtocol(self.client_name, concentrator_server, 
+                                   magnetic_declination)
         super().__init__(ip, port, protocol_factory=factory)
 
 

@@ -95,6 +95,7 @@ def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip,
 
     if aanderaa_port:
         aanderaa_client = AanderaaClient(concentrator_server,
+                                         magnetic_declination,
                                          aanderaa_ip, aanderaa_port)
         aanderaa_client.connect()
     else:

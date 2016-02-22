@@ -33,6 +33,14 @@ def parse_optiplex_message(message):
     return data
 
 
+def raw_temp_to_celsius(value):
+    v = int(value)
+    a = -8.75
+    b = 5.181E-02
+    c = 0
+    d = 0
+    return a + b*v + c*v**2 + d*v**3
+
 def parse_aanderaa_message(message):
     """ Parse a message sent from the aanderaa sensor
 
@@ -49,11 +57,12 @@ def parse_aanderaa_message(message):
     try:
         message = message.decode('ascii')
         reference, speed, direction, temperature = message.strip().split()
+
         return {
             'reference': int(reference),
             'speed': int(speed) * 2.933E-01,  # cm/s
             'direction': int(direction) * 3.516E-01,  # Deg.M
-            'temperature': int(temperature) * 5.181E-02  # Deg.C
+            'temperature': raw_temp_to_celsius(temperature)  
         }
     except (IndexError, ValueError):
         raise ValueError("Can't parse message '%s'" % message.strip())
