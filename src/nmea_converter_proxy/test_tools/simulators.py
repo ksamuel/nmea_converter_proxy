@@ -42,16 +42,17 @@ class FakeSensorServer(asyncio.Protocol):
         self.name = "%s fake sensor" % name.upper()
         self.data_file = data_file
         self.interval = interval
+        self.emitter = None
 
     def connection_made(self, transport):
         self.peername = '%s:%s' % transport.get_extra_info('peername')
         log.info('{}: connection from {}'.format(self.name, self.peername))
         self.transport = transport
-        asyncio.ensure_future(self.send_data())
+        self.emitter = asyncio.ensure_future(self.send_data())
 
     async def send_data(self):
 
-        while True:
+        while self.transport and not self.transport.is_closing():
             try:
                 for line in self.data_file:
                     if not self.transport or self.transport.is_closing():
@@ -79,6 +80,10 @@ class FakeSensorServer(asyncio.Protocol):
         else:
             msg = '%s: could not send data to %s: not connected'
             log.error(msg % (self.name, self.peername))
+
+    def stop_emitter(self):
+        if self.emitter:
+            self.emitter.cancel()
 
 
 class FakeAanderaa(FakeSensorServer):
@@ -115,12 +120,17 @@ def run_dummy_sensor(name, port, data_file):
 
     loop = asyncio.get_event_loop()
 
+    protocols = []
     if name == "aanderaa":
         def factory():
-            return FakeAanderaa(name, data_file)
+            s = FakeAanderaa(name, data_file)
+            protocols.append(s)
+            return s
     else:
         def factory():
-            return FakeSensorServer(name, data_file)
+            s = FakeSensorServer(name, data_file)
+            protocols.append(s)
+            return s
     try:
         coro = loop.create_server(factory, '0.0.0.0', port)
         server = loop.run_until_complete(coro)
@@ -136,6 +146,8 @@ def run_dummy_sensor(name, port, data_file):
     except KeyboardInterrupt:
         pass
     finally:
+        for protocol in protocols:
+            protocol.stop_emitter()
         server.close()
         loop.run_until_complete(server.wait_closed())
         loop.close()
