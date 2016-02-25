@@ -86,10 +86,12 @@ def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip,
         log.error("Unable to start concentrator: %s" % e)
         sys.exit(1)
 
+    sensor_clients = []
+
     if optiplex_port:
         optiplex_client = OptiplexClient(concentrator_server,
                                          optiplex_ip, optiplex_port)
-        optiplex_client.connect()
+        sensor_clients.append(optiplex_client.connect())
     else:
         log.warning('Optiplex not configured')
 
@@ -97,13 +99,12 @@ def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip,
         aanderaa_client = AanderaaClient(concentrator_server,
                                          magnetic_declination,
                                          aanderaa_ip, aanderaa_port)
-        aanderaa_client.connect()
+        sensor_clients.append(aanderaa_client.connect())
     else:
         log.warning('Aanderaa not configured')
 
     loop = asyncio.get_event_loop()
 
-    sensor_clients = []
     for name, config in additional_sensors.items():
         client = GenericProxyClient(name, concentrator_server, **config)
         sensor_clients.append(client.connect())
@@ -113,5 +114,7 @@ def run_server(optiplex_port, aanderaa_port, concentrator_port, concentrator_ip,
     except KeyboardInterrupt:
         pass
     finally:
+        for client in sensor_clients:
+            client.stop()
         concentrator_server.stop()
         loop.close()

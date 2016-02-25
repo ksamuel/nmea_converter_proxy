@@ -48,6 +48,7 @@ class AutoReconnectTCPClient:
         self.ip = ip
         self.port = port
         self.reconnection_timer = 1
+        self.stopped = False
 
         endpoint_name = endpoint_name or self.endpoint_name
         if endpoint_name:
@@ -57,7 +58,7 @@ class AutoReconnectTCPClient:
 
     async def ensure_connection(self):
 
-        if not self.transport or self.transport.is_closing():
+        if not self.stopped:
             while True:
                 try:
                     log.debug('New attempt to connect to %s' % self.endpoint_name)
@@ -92,6 +93,11 @@ class AutoReconnectTCPClient:
         con = await loop.create_connection(factory, ip, port)
         log.debug('Connected to %s on %s:%s' % (self.endpoint_name, ip, port))
         return con
+
+    def stop(self):
+        log.debug('Stopping {}'.format(self.client_name))
+        self.stopped = True
+        self.transport.close()
 
 
 class GenericProxyProtocol(asyncio.Protocol):

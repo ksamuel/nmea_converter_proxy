@@ -51,7 +51,7 @@ class FakeSensorServer(asyncio.Protocol):
 
     async def send_data(self):
 
-        while self.transport and not self.transport.is_closing():
+        while True:
             try:
                 for line in self.data_file:
                     if not self.transport or self.transport.is_closing():
@@ -106,8 +106,7 @@ def run_dummy_concentrator(port):
     except KeyboardInterrupt:
         pass
     finally:
-        concentrator_client.close()
-        loop.run_until_complete(concentrator_client.wait_closed())
+        concentrator_client.stop()
         loop.close()
 
 
