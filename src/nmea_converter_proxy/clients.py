@@ -79,7 +79,8 @@ class AutoReconnectTCPClient:
                     await asyncio.sleep(self.reconnection_timer)
 
     def connect(self):
-        log.debug('Connecting to %s on %s:%s' % (self.endpoint_name, self.ip, self.port))
+        args = (self.client_name, self.endpoint_name, self.ip, self.port)
+        log.info('%s: Connecting to %s on %s:%s' % args)
         asyncio.ensure_future(self.ensure_connection())
         return self
 
@@ -104,13 +105,28 @@ class GenericProxyProtocol(asyncio.Protocol):
         log.info('Connection from {}'.format(peername))
         self.transport = transport
         self.peername = peername
+        self.buffer = bytearray()
 
     def data_received(self, data):
         msg = 'Data received on {} from {}: "{!r}"'
         log.debug(msg.format(self.name, self.peername, data))
-        self.send(data)
 
-    def send(self, data):
+        message, self.buffer = self.build_message(self.buffer, data)
+
+        if message:
+            log.debug('{}: message is ready "{!r}"'.format(self.name, message))
+            self.on_message(message)
+
+    def build_message(self, buffer, data):
+
+        for byte in data:
+            buffer.append(byte)
+            if buffer.endswith(b'\r\n'):
+                return buffer, bytearray()
+
+        return None, buffer
+
+    def on_message(self, data):
         self.concentrator_server.send(data)
 
 
@@ -121,24 +137,14 @@ class AanderaaProtocol(GenericProxyProtocol):
         self.magnetic_declination = magnetic_declination
         super().__init__(name, concentrator_server)
 
-    def connection_made(self, transport):
-        super().connection_made(transport)
-        self.buffer = bytearray()
-
-    def send(self, data):
-        self.buffer.extend(data)
-        if self.buffer.endswith(b'\r\n'):
-            log.debug('Buffer is ready "{!r}"'.format(self.buffer))
-            self.process_full_message(self.buffer.replace(b'\x00', b' '))
-            self.buffer = bytearray()
-
-    def process_full_message(self, data):
+    def on_message(self, message):
+        message = message.replace(b'\x00', b' ')
         try:
-            parsed_data = parse_aanderaa_message(data)
+            parsed_data = parse_aanderaa_message(message)
             log.debug("Extracted %s" % parsed_data)
         except ValueError as e:
             msg = "Unable to parse '{!r}' from {}. Error was: {}"
-            log.error(msg.format(data, self.peername, e))
+            log.error(msg.format(message, self.peername, e))
             return
         except Exception as e:
             logging.exception(e)
@@ -156,7 +162,7 @@ class AanderaaProtocol(GenericProxyProtocol):
         except ValueError as e:
             msg = ("Unable to convert '{!r}' from {} to NMEA water flow "
                    "sentence. Error was: {}")
-            log.error(msg.format(data, self.peername, e))
+            log.error(msg.format(message, self.peername, e))
         except Exception as e:
             logging.exception(e)
 
@@ -167,7 +173,7 @@ class AanderaaProtocol(GenericProxyProtocol):
         except ValueError as e:
             msg = ("Unable to convert '{!r}' from {} to NMEA temperature "
                    "sentence. Error was: {}")
-            log.error(msg.format(data, self.peername, e))
+            log.error(msg.format(message, self.peername, e))
         except Exception as e:
             logging.exception(e)
 
@@ -178,13 +184,13 @@ class OptiplexProtocol(GenericProxyProtocol):
     def connection_made(self, transport):
         super().connection_made(transport)
 
-    def send(self, data):
+    def on_message(self, message):
         try:
-            parsed_data = parse_optiplex_message(data)
+            parsed_data = parse_optiplex_message(message)
             log.debug("Extracted %s" % parsed_data)
         except ValueError as e:
             msg = "Unable to parse '{!r}' from {}. Error was: {}"
-            log.error(msg.format(data, self.peername, e))
+            log.error(msg.format(message, self.peername, e))
         except Exception as e:
             logging.exception(e)
 
@@ -199,7 +205,7 @@ class OptiplexProtocol(GenericProxyProtocol):
             except ValueError as e:
                 msg = ("Unable to convert '{!r}' from {} to NMEA water depth "
                        "sentence. Error was: {}")
-                log.error(msg.format(data, self.peername, e))
+                log.error(msg.format(message, self.peername, e))
             except Exception as e:
                 logging.exception(e)
 
@@ -211,13 +217,13 @@ class OptiplexProtocol(GenericProxyProtocol):
             except ValueError as e:
                 msg = ("Unable to convert '{!r}' from {} to NMEA temperature "
                        "sentence. Error was: {}")
-                log.error(msg.format(data, self.peername, e))
+                log.error(msg.format(message, self.peername, e))
             except Exception as e:
                 logging.exception(e)
 
 
 class OptiplexClient(AutoReconnectTCPClient):
-    client_name = " Krohne Optiflex tide sensor client"
+    client_name = "Krohne Optiflex tide sensor client"
     endpoint_name = "Krohne Optiflex tide sensor"
 
     def __init__(self, concentrator_server, ip, port, *args, **kwargs):
@@ -231,11 +237,11 @@ class AanderaaClient(AutoReconnectTCPClient):
     client_name = "Aanderaa 4100R current meter client"
     endpoint_name = "Aanderaa 4100R current meter"
 
-    def __init__(self, concentrator_server, magnetic_declination, 
+    def __init__(self, concentrator_server, magnetic_declination,
                  ip, port, *args, **kwargs):
 
         def factory():
-            return AanderaaProtocol(self.client_name, concentrator_server, 
+            return AanderaaProtocol(self.client_name, concentrator_server,
                                    magnetic_declination)
         super().__init__(ip, port, protocol_factory=factory)
 
